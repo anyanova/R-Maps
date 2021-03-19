@@ -1,7 +1,6 @@
 ##Grand Canyon sample map, WIREs
 
-setwd("C:/Users/ametcalfe/Desktop/Rcode/Spatial_General/")
-
+setwd("C:/Users/ametcalfe/Desktop/WiRES_CitSci/GabiMendezFigures/")
 
 
 ##########################################################
@@ -17,21 +16,36 @@ library("rnaturalearth")
 library("rnaturalearthdata")
 
 
+#Import and format data from database
+LTsample<-as.data.frame(read.csv(url("https://raw.githubusercontent.com/jmuehlbauer-usgs/Database/master/LightTrapSample.csv")))
+##Add Year, Month, Day using library(lubridate)
+	LTsample$Date<-as.Date(LTsample$Date, format = "%m/%d/%Y")
+	LTsample$Year<-year(LTsample$Date)
+	LTsample$Month<-month(LTsample$Date)
+	LTsample$Jul<-yday(LTsample$Date)		
+#Remove shitty samples
+LTsample<-LTsample[which(LTsample$FlagDelete!=1),]
+
+
 #Make dataset of GC LTsamples from 2019
 LTGC<-LTsample[LTsample$Reach=="CRGrandCanyon" | LTsample$Reach=="CRLeesFerry",]
 LTGC<-LTGC[LTGC$Year==2019,]
 summary(LTGC)
+head(LTGC)
 
 #Categorize collectors (Metcalfe March trip was a private)
 unique(LTGC$Collector)	
-LTGC$Collection<-ifelse(LTGC$Collector==c("SzydloC","KennedyT","GCMRC","GoodenoughD","MetcalfeA","MuehlbauerJ","DaubertM"), "USGS","CitSci")
-LTGC[LTGC$BarcodeID=="L11363",33]<-"CitSci"
+LTGC$Collection<-ifelse(LTGC$Collector=="SzydloC"| LTGC$Collector=="KennedyT"|LTGC$Collector=="GCMRC"|LTGC$Collector=="GoodenoughD"|LTGC$Collector=="MuehlbauerJ"|LTGC$Collector=="DaubertM", "USGS","CitSci")
+LTGC[LTGC$BarcodeID=="L11363",29]<-"USGS"
 
 #Add LatLong
 GCRM<-read.csv("C:/Users/ametcalfe/Desktop/GIS/GrandCanyon/GrandCanyonLatLongRM.csv")
 LTGC<-merge(LTGC,GCRM, by="RiverMile", no.dups=TRUE)
 
 colnames(LTGC)
+
+table(LTGC$Collection)
+
 
 
 ##MAKE MAP###############################################
@@ -160,9 +174,39 @@ GCmap2019<-ggplot() + ggtitle("Grand Canyon Light Trap Samples 2019") +
 	geom_sf(data=UBResShapefile,colour="gray",fill="gray", cex=1.2) +
 	coord_sf(xlim = c(-115, -111), ylim = c(35.5, 37.5), expand = FALSE) +
 	geom_point(data=LTGC[LTGC$Collection=="CitSci",],aes(x=Long,y=Lat), fill="white", size=3, pch=21, alpha=0.6) +
-	geom_jitter(data=LTGC[LTGC$Collection=="USGS",],aes(x=Long,y=Lat), fill="green", size=3, pch=21, width=0.01, height=0.01, alpha=0.6) +
-	scaleBar(lon = -113.5, lat = 42.25, distanceLon = 50, distanceLat = 10, distanceLegend = 25, dist.unit = "km", orientation = FALSE,legend.size=3) 
+	geom_jitter(data=LTGC[LTGC$Collection=="USGS",],aes(x=Long,y=Lat), fill="darkorchid4", size=3, pch=21, width=0.01, height=0.01, alpha=0.8) +
+	scaleBar(lon = -114.8, lat = 37.2, distanceLon = 25, distanceLat = 10, distanceLegend = 25, dist.unit = "km", orientation = FALSE,legend.size=3) 
 GCmap2019
-#ggsave("HYOS_2012to2020.pdf", GCHYmap, height=12.9, width=10, units='in',dpi=800)
- 	
-	
+ggsave("WIREsCitSci_BGmap.pdf", GCmap2019, height=12.9, width=10, units='in',dpi=800)
+ 
+ 
+#Temporal Figure, spread by month 2019
+#Stacked barplot
+head(LTGC)
+CSbar<-ggplot(LTGC, aes(x=Month, fill=Collection)) + 
+	geom_bar(col="black") + scale_fill_manual(values=c("azure","forestgreen")) +
+	theme_classic() + ylab(expression(~italic(n)~ 'samples')) +
+	scale_x_discrete(limit=c(2:10))
+CSbar
+ggsave("WIREsCitSci_Bar.pdf", CSbar, height=4, width=4.5, units='in',dpi=800)
+
+
+#Sample accumulation figure
+#Make 2 dataframes with total n/dayhead(LTGC)
+ACC<-as.data.frame(with(LTGC, tapply(BarcodeID,list(Jul, Collection), FUN = function(x) length(x))))
+ACC$Jul<-as.numeric(rownames(ACC))
+ACC[is.na(ACC)]=0
+ACC$CSrollsum<-cumsum(ACC$CitSci)
+ACC$GSrollsum<-cumsum(ACC$USGS)
+head(ACC)
+
+#Plot
+AccPlot<-ggplot(ACC,aes(x=Jul,y=CSrollsum))+ 
+		geom_smooth(col="black", size=2, se=FALSE)+
+		geom_smooth(aes(x=Jul,y=GSrollsum), col="darkorchid3", size=2, se=FALSE) +
+		xlab("Day of year") + ylab(expression(~italic(n)~ 'samples')) +
+		theme_classic() + theme(text = element_text(size=20))
+AccPlot
+ggsave("WIREsCitSci_AccumulationFig.pdf", AccPlot, height=4, width=6, units='in',dpi=800)
+
+
